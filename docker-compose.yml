@@ -1,0 +1,50 @@
+services:
+
+  # ============================================================
+  # PostgreSQL database
+  # Init scripts in ./database/ run alphabetically on first start.
+  # Numbered prefixes enforce: schema → security → seed order.
+  # ============================================================
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pmuser
+      POSTGRES_PASSWORD: pmpassword
+      POSTGRES_DB: passwordmanager
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/security.sql:/docker-entrypoint-initdb.d/02-security.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/03-seed.sql
+    ports:
+      - "5432:5432"   # Exposed for local psql access during development
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pmuser -d passwordmanager"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ============================================================
+  # Go backend API server
+  # ============================================================
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ============================================================
+  # React frontend (nginx serves built assets, proxies /api/)
+  # ============================================================
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
